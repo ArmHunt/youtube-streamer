@@ -21,7 +21,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup swap space
+      - name: Setup swap space (critical for build)
         run: |
           fallocate -l 8G /swapfile
           chmod 600 /swapfile
@@ -63,11 +63,17 @@ jobs:
           rm -f cmdline-tools.zip
           
           if [ -d "$HOME/android-sdk/cmdline-tools/latest/bin" ]; then
+            echo "Installing Android SDK packages..."
             yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1
             $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33"
             $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.0"
+            # Use stable NDK version
             $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
             $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
+          else
+            echo "ERROR: Could not find Android SDK tools"
+            ls -la $HOME/android-sdk/
+            exit 1
           fi
 
       - name: Build APK with Buildozer
