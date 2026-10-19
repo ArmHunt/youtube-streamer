@@ -14,19 +14,22 @@ on:
 
 jobs:
   build-android:
-    name: Build APK
+    name: Build APK (Debug)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Check system resources
+      - name: Setup swap space
         run: |
+          fallocate -l 8G /swapfile
+          chmod 600 /swapfile
+          mkswap /swapfile
+          swapon /swapfile
           free -h
-          df -h /
 
-      - name: Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -35,53 +38,64 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install buildozer cython
-          pip list 2>/dev/null | grep -iE "buildozer|cython"
+          python -m buildozer init --help 2>&1 | head -3
 
-      - name: Install Android build dependencies
+      - name: Install Android SDK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant
+          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip
+          sudo apt-get install -y ant
           
-      - name: Accept Android SDK licenses via buildozer
-        run: |
-          cd ${{ github.workspace }}
-          # Create .buildozer directory structure if needed
-          mkdir -p ~/.buildozer
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
+          mkdir -p $HOME/android-sdk
+          export ANDROID_HOME=$HOME/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
           
-          # Run buildozer dep to download SDK components first
-          echo "Downloading Android SDK via buildozer..."
-          # Use printf to automatically answer 'y' to license prompts
-          printf 'y\n' | buildozer android debug 2>&1 | tee build.log || true
+          cd $HOME
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d $HOME/android-sdk/
           
-          echo "Buildozer dep completed"
+          # Handle zip structure
+          if [ -d "$HOME/android-sdk/cmdline-tools/cmdline-tools" ]; then
+            mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
+          else
+            mv "$HOME/android-sdk/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
+          fi
+          rm -f cmdline-tools.zip
+          
+          if [ -d "$HOME/android-sdk/cmdline-tools/latest/bin" ]; then
+            yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1
+            $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33"
+            $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.0"
+            $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
+            $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
+          fi
 
       - name: Build APK with Buildozer
         run: |
           cd ${{ github.workspace }}
-          echo "=== Starting build ==="
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export ANDROID_HOME=$HOME/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          export ANDROID_NDK_ROOT=$HOME/android-sdk/ndk/25.2.9519653
           
-          # Ensure license acceptance
-          mkdir -p $HOME/.android
-          touch $HOME/.android/repositories.cfg
+          echo "Build starting..."
+          echo "Available memory:"
+          free -h
+          echo "Available disk:"
+          df -h /
           
-          # Use yes to automatically accept any license prompts
-          yes | buildozer android debug 2>&1 | tee build.log
+          buildozer android debug 2>&1 | tee build.log
           
-          echo "=== Searching for APK ==="
-          APK=$(find . -name "*.apk" -type f 2>/dev/null | grep -v ".buildozer/dists" | head -1)
-          if [ -z "$APK" ]; then
-            APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
-          fi
+          echo "Build completed. Looking for APK..."
+          find . -name "*.apk" -type f 2>/dev/null
           
+          APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
           if [ -n "$APK" ]; then
             cp "$APK" output.apk
-            echo "✅ APK found: $(ls -lh output.apk)"
+            ls -lh output.apk
+            echo "✅ APK ready!"
           else
-            echo "❌ No APK found"
-            tail -30 build.log 2>/dev/null
+            echo "⚠️ APK not found in expected locations"
+            find . -name "*.apk" 2>/dev/null
             exit 1
           fi
 
@@ -92,9 +106,3 @@ jobs:
           name: youtube-streamer-apk
           path: output.apk
           retention-days: 30
-
-      - name: Debug on failure
-        if: failure()
-        run: |
-          echo "=== FAILURE ==="
-          tail -50 build.log 2>/dev/null || echo "No log"
