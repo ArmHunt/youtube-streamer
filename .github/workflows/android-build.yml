@@ -21,86 +21,62 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup swap space (8GB)
+      - name: Check system resources
         run: |
-          fallocate -l 8G /swapfile
-          chmod 600 /swapfile
-          mkswap /swapfile
-          swapon /swapfile
-          echo "Memory status:"
+          echo "=== System Info ==="
           free -h
-          echo "Swap status:"
-          swapon --show
-
-      - name: Set up Python
+          df -h /
+          nproc
+          
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install buildozer and Cython
+          
+      - name: Install buildozer and dependencies
         run: |
           python -m pip install --upgrade pip
           pip install buildozer cython
-          echo "Installed packages:"
-          pip list | grep -iE "buildozer|cython|kivy"
-
-      - name: Install Android SDK/NDK via buildozer
+          echo "Installed:"
+          pip list 2>/dev/null | grep -iE "buildozer|cython"
+          
+      - name: Install Android build dependencies
         run: |
-          cd ${{ github.workspace }}
-          # Let buildozer handle SDK/NDK installation automatically
-          buildozer android debug dep 2>&1 | tail -20
+          sudo apt-get update
+          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant
           
-          echo "Verifying Android SDK setup..."
-          ls -la ~/.buildozer/android/platform/ 2>/dev/null || echo "Buildozer platform dir not found"
-          
-          # Find installed NDK version
-          NDK_VER=$(find ~/.buildozer/android/platform -name "android-ndk-*" -type d 2>/dev/null | head -1)
-          if [ -n "$NDK_VER" ]; then
-            NDK_VERSION=$(basename "$NDK_VER" | sed 's/android-ndk-//')
-            export ANDROID_NDK_ROOT="$NDK_VER"
-            echo "Found NDK: $NDK_VERSION"
-          fi
-
       - name: Build APK
         run: |
           cd ${{ github.workspace }}
-          
-          echo "Starting APK build..."
-          echo "Disk space:"
-          df -h /
-          echo "Memory:"
-          free -h
-          
-          # Run buildozer with verbose output
+          echo "=== Starting build ==="
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           buildozer android debug 2>&1 | tee build.log
           
-          echo "Build process finished. Searching for APK..."
-          find . -name "*.apk" -type f 2>/dev/null
+          echo "=== Searching for APK ==="
+          APK=$(find . -name "*.apk" -type f 2>/dev/null | grep -v ".buildozer/dists" | head -1)
+          if [ -z "$APK" ]; then
+            APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
+          fi
           
-          APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
           if [ -n "$APK" ]; then
             cp "$APK" output.apk
-            echo "✅ APK found and copied!"
-            ls -lh output.apk
+            echo "✅ APK found: $(ls -lh output.apk)"
           else
-            echo "⚠️ APK not found"
-            echo "Searching in .buildozer:"
-            find .buildozer -name "*.apk" 2>/dev/null | head -5
-            echo "Build log tail:"
-            tail -50 build.log 2>/dev/null
+            echo "❌ No APK found"
+            tail -30 build.log 2>/dev/null
             exit 1
           fi
-
-      - name: Upload APK artifact
+          
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: youtube-streamer-apk
           path: output.apk
           retention-days: 30
-
-      - name: Show build log on failure
+          
+      - name: Debug on failure
         if: failure()
         run: |
-          echo "=== Build Log (last 100 lines) ==="
-          tail -100 build.log 2>/dev/null || echo "No build log found"
+          echo "=== FAILURE ==="
+          tail -50 build.log 2>/dev/null || echo "No log"
