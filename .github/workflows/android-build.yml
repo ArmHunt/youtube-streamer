@@ -23,33 +23,59 @@ jobs:
 
       - name: Check system resources
         run: |
-          echo "=== System Info ==="
           free -h
           df -h /
-          nproc
-          
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
+
       - name: Install buildozer and dependencies
         run: |
           python -m pip install --upgrade pip
           pip install buildozer cython
-          echo "Installed:"
           pip list 2>/dev/null | grep -iE "buildozer|cython"
-          
+
       - name: Install Android build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant
-          
-      - name: Build APK
+
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p ~/.android
+          # Create empty file to skip license prompt
+          touch ~/.android/repositories.cfg
+          # Accept all SDK licenses
+          sudo mkdir -p /opt/android-sdk/cmdline-tools
+          sudo ln -sf $(which sdkmanager 2>/dev/null || echo "/usr/bin/sdkmanager") /opt/android-sdk/cmdline-tools/sdkmanager 2>/dev/null || true
+          # Set ANDROID_HOME and ANDROID_SDK_ROOT
+          export ANDROID_HOME=$HOME/.android/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/.android/android-sdk
+          # Try to accept licenses using buildozer's internal SDK
+          if [ -d "$HOME/.buildozer/android/platform/android-sdk" ]; then
+            echo "Found buildozer SDK"
+            ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
+          fi
+          echo "Accepted" > $HOME/.android/repositories.cfg
+          echo "SDK licenses step completed"
+
+      - name: Build APK with Buildozer
         run: |
           cd ${{ github.workspace }}
           echo "=== Starting build ==="
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          
+          # Set up environment for buildozer
+          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+          
+          # Ensure licenses are accepted
+          mkdir -p $HOME/.android
+          touch $HOME/.android/repositories.cfg
+          
+          # Run buildozer with debug output
           buildozer android debug 2>&1 | tee build.log
           
           echo "=== Searching for APK ==="
@@ -66,7 +92,7 @@ jobs:
             tail -30 build.log 2>/dev/null
             exit 1
           fi
-          
+
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
@@ -74,7 +100,7 @@ jobs:
           name: youtube-streamer-apk
           path: output.apk
           retention-days: 30
-          
+
       - name: Debug on failure
         if: failure()
         run: |
