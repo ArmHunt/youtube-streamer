@@ -1,0 +1,79 @@
+name: Build YouTube Streamer APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Tipo de build'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build-android:
+    name: Build APK
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip buildozer cython
+
+      - name: Setup Android SDK
+        run: |
+          mkdir -p $HOME/android-sdk
+          export ANDROID_HOME=$HOME/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          
+          cd $HOME
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          mv cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33"
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.0"
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
+          
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Build APK with Buildozer
+        run: |
+          cd ${{ github.workspace }}
+          buildozer android debug 2>&1 | tee build.log
+          
+          echo "Build completed. Finding APK..."
+          APK_FILE=$(find . -name "*.apk" -type f 2>/dev/null | grep -v ".buildozer" | head -1)
+          
+          if [ -n "$APK_FILE" ]; then
+            cp "$APK_FILE" output.apk
+            echo "✅ APK ready: output.apk"
+            ls -lh output.apk
+          else
+            echo "⚠️ APK not found, searching..."
+            find . -name "*.apk" 2>/dev/null
+            exit 1
+          fi
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-streamer-apk
+          path: output.apk
+          retention-days: 30

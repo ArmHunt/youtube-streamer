@@ -1,0 +1,52 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Buildozer artifacts
+build/
+dist/
+default.png
+*.apk
+*.aab
+*.aab-sign
+*.keystore
+
+# Android SDK (if local build)
+android-sdk/
+.android/
+
+# Node modules (for some dependencies)
+node_modules/
+
+# Buildozer cache
+.cache/
