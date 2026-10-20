@@ -40,7 +40,7 @@ jobs:
       - name: Install Android build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant wget
+          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant wget libtool-bin
 
       - name: Download and setup Android SDK with licenses
         run: |
