@@ -42,29 +42,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant wget
 
-      - name: Accept Android SDK licenses
+      - name: Pre-accept Android SDK licenses
         run: |
+          # Create the license file that Buildozer's SDK will look for
+          # This is the hash for accepting the Android SDK license
+          mkdir -p ~/.android
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          
+          # Write the Android SDK license hash (this is the standard accepted license)
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          
+          # Also create the NDK license if it exists
+          if [ -d ~/.buildozer/android/platform/android-ndk-r25b ]; then
+            echo "848a17b737ae27973d196a7191a98d34100bb0c9" > ~/.buildozer/android/platform/android-sdk/licenses/android-ndk-license 2>/dev/null || true
+          fi
+          
+          # Set up android home for Buildozer
           mkdir -p ~/.android
           touch ~/.android/repositories.cfg
           
-          # Download SDK command-line tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip -O /tmp/cmdline-tools.zip
-          mkdir -p /tmp/cmdline-tools
-          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
-          
-          # Move to proper location that Buildozer expects
-          mkdir -p ~/.buildozer/android/platform/android-sdk
-          mv /tmp/cmdline-tools/cmdline-tools ~/.buildozer/android/platform/android-sdk/tools
-          
-          # Accept all SDK licenses
-          yes | ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --licenses 2>&1 | tail -5
-          
-          echo "✅ SDK licenses accepted"
-          echo "SDK installed at: ~/.buildozer/android/platform/android-sdk"
-          
-          # Verify installation
-          ls -la ~/.buildozer/android/platform/android-sdk/tools/bin/
-          ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --list 2>&1 | head -10
+          echo "✅ Android SDK licenses pre-accepted"
+          echo "License file: ~/.buildozer/android/platform/android-sdk/licenses/"
+          ls -la ~/.buildozer/android/platform/android-sdk/licenses/
 
       - name: Build APK with Buildozer
         run: |
