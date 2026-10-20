@@ -42,28 +42,40 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant wget
 
-      - name: Pre-accept Android SDK licenses
+      - name: Download and setup Android SDK with licenses
         run: |
-          # Create the license file that Buildozer's SDK will look for
-          # This is the hash for accepting the Android SDK license
-          mkdir -p ~/.android
-          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
-          
-          # Write the Android SDK license hash (this is the standard accepted license)
-          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          
-          # Also create the NDK license if it exists
-          if [ -d ~/.buildozer/android/platform/android-ndk-r25b ]; then
-            echo "848a17b737ae27973d196a7191a98d34100bb0c9" > ~/.buildozer/android/platform/android-sdk/licenses/android-ndk-license 2>/dev/null || true
-          fi
-          
-          # Set up android home for Buildozer
           mkdir -p ~/.android
           touch ~/.android/repositories.cfg
           
-          echo "✅ Android SDK licenses pre-accepted"
-          echo "License file: ~/.buildozer/android/platform/android-sdk/licenses/"
-          ls -la ~/.buildozer/android/platform/android-sdk/licenses/
+          # Create SDK directory structure
+          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
+          
+          # Download SDK command-line tools
+          cd /tmp
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
+          
+          # Create licenses directory and accept SDK license
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          
+          # Accept NDK license
+          echo "848a17b737ae27973d196a7191a98d34100bb0c9" > ~/.buildozer/android/platform/android-sdk/licenses/android-ndk-license
+          
+          # Verify SDK installation
+          export PATH=$HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin:$PATH
+          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+          
+          echo "✅ SDK command-line tools installed"
+          ls -la $HOME/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/
+          sdkmanager --version
+          
+          # Install required SDK components
+          sdkmanager "platforms;android-33" "build-tools;33.0.0" "cmdline-tools;latest" "platform-tools" 2>&1 | tail -10
+          
+          # Verify all components
+          sdkmanager --list 2>&1 | head -20
 
       - name: Build APK with Buildozer
         run: |
@@ -72,18 +84,13 @@ jobs:
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
           export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
-          
-          # Set NDK path after Buildozer installs it
           export ANDROID_NDK_ROOT=$HOME/.buildozer/android/platform/android-ndk-r25b
           
-          # Run buildozer - it will use the SDK we just set up
+          # Run buildozer
           buildozer android debug 2>&1 | tee build.log
           
           echo "=== Searching for APK ==="
-          APK=$(find . -name "*.apk" -type f 2>/dev/null | grep -v ".buildozer/dists" | head -1)
-          if [ -z "$APK" ]; then
-            APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
-          fi
+          APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
           
           if [ -n "$APK" ]; then
             cp "$APK" output.apk
