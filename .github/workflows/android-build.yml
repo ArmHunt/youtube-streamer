@@ -42,38 +42,44 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant wget
 
-      - name: Accept Android SDK licenses before buildozer
+      - name: Setup Android SDK in Buildozer's expected location
         run: |
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
+          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
           
           # Download SDK command-line tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip -O /tmp/cmdline-tools.zip
-          mkdir -p /tmp/cmdline-tools
           unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
           
-          # Move to proper location
-          mkdir -p ~/.android/cmdline-tools
-          mv /tmp/cmdline-tools/cmdline-tools ~/.android/cmdline-tools/latest
+          # Move to Buildozer's expected location
+          mv /tmp/cmdline-tools/cmdline-tools ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
           
-          # Accept all licenses automatically
-          yes | ~/.android/cmdline-tools/latest/bin/sdkmanager --licenses 2>&1 | head -20
+          # Accept all SDK licenses
+          yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses 2>&1 | tail -5
           
           # Install required SDK components
-          ~/.android/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" "ndk;25.2.9519653" 2>&1 | head -20
+          ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" "ndk;25.2.9519653" 2>&1 | tail -5
           
-          echo "✅ SDK licenses accepted and components installed"
+          # Set environment variables to use this SDK
+          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+          export ANDROID_NDK_ROOT=$HOME/.buildozer/android/platform/android-ndk-r25b
+          
+          echo "✅ SDK installed in Buildozer's expected location"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
+          
+          # Verify installation
+          ls -la $ANDROID_HOME/cmdline-tools/latest/bin/
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --list 2>&1 | head -20
 
       - name: Build APK with Buildozer
         run: |
           cd ${{ github.workspace }}
           echo "=== Starting build ==="
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-          
-          # Set environment variables to use manually installed SDK
-          export ANDROID_HOME=$HOME/.android
-          export ANDROID_SDK_ROOT=$HOME/.android
-          export ANDROID_NDK_ROOT=$HOME/.android/ndk/25.2.9519653
+          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+          export ANDROID_NDK_ROOT=$HOME/.buildozer/android/platform/android-ndk-r25b
           
           # Run buildozer
           buildozer android debug 2>&1 | tee build.log
