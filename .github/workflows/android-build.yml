@@ -57,7 +57,7 @@ jobs:
           mv cmdline-tools ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest
           
           # Create symlink from tools/ -> cmdline-tools/latest (Buildozer expects tools/bin/sdkmanager)
-          ln -sfn latest ~/.buildozer/android/platform/android-sdk/tools
+          ln -sfn cmdline-tools/latest ~/.buildozer/android/platform/android-sdk/tools
           
           # Create licenses directory and accept SDK license
           mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
