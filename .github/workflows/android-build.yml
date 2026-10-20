@@ -41,25 +41,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant
-
-      - name: Accept Android SDK licenses
+          
+      - name: Accept Android SDK licenses via buildozer
         run: |
+          cd ${{ github.workspace }}
+          # Create .buildozer directory structure if needed
+          mkdir -p ~/.buildozer
           mkdir -p ~/.android
-          # Create empty file to skip license prompt
           touch ~/.android/repositories.cfg
-          # Accept all SDK licenses
-          sudo mkdir -p /opt/android-sdk/cmdline-tools
-          sudo ln -sf $(which sdkmanager 2>/dev/null || echo "/usr/bin/sdkmanager") /opt/android-sdk/cmdline-tools/sdkmanager 2>/dev/null || true
-          # Set ANDROID_HOME and ANDROID_SDK_ROOT
-          export ANDROID_HOME=$HOME/.android/android-sdk
-          export ANDROID_SDK_ROOT=$HOME/.android/android-sdk
-          # Try to accept licenses using buildozer's internal SDK
-          if [ -d "$HOME/.buildozer/android/platform/android-sdk" ]; then
-            echo "Found buildozer SDK"
-            ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
-          fi
-          echo "Accepted" > $HOME/.android/repositories.cfg
-          echo "SDK licenses step completed"
+          
+          # Run buildozer dep to download SDK components first
+          echo "Downloading Android SDK via buildozer..."
+          # Use printf to automatically answer 'y' to license prompts
+          printf 'y\n' | buildozer android debug 2>&1 | tee build.log || true
+          
+          echo "Buildozer dep completed"
 
       - name: Build APK with Buildozer
         run: |
@@ -67,16 +63,12 @@ jobs:
           echo "=== Starting build ==="
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           
-          # Set up environment for buildozer
-          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
-          export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
-          
-          # Ensure licenses are accepted
+          # Ensure license acceptance
           mkdir -p $HOME/.android
           touch $HOME/.android/repositories.cfg
           
-          # Run buildozer with debug output
-          buildozer android debug 2>&1 | tee build.log
+          # Use yes to automatically accept any license prompts
+          yes | buildozer android debug 2>&1 | tee build.log
           
           echo "=== Searching for APK ==="
           APK=$(find . -name "*.apk" -type f 2>/dev/null | grep -v ".buildozer/dists" | head -1)
