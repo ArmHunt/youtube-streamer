@@ -14,22 +14,19 @@ on:
 
 jobs:
   build-android:
-    name: Build APK (Debug)
+    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup swap space (critical for build)
+      - name: Check system resources
         run: |
-          fallocate -l 8G /swapfile
-          chmod 600 /swapfile
-          mkswap /swapfile
-          swapon /swapfile
           free -h
+          df -h /
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -38,70 +35,61 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install buildozer cython
-          python -m buildozer init --help 2>&1 | head -3
+          pip list 2>/dev/null | grep -iE "buildozer|cython"
 
-      - name: Install Android SDK dependencies
+      - name: Install Android build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip
-          sudo apt-get install -y ant
+          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant wget
+
+      - name: Accept Android SDK licenses before buildozer
+        run: |
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
           
-          mkdir -p $HOME/android-sdk
-          export ANDROID_HOME=$HOME/android-sdk
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          # Download SDK command-line tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip -O /tmp/cmdline-tools.zip
+          mkdir -p /tmp/cmdline-tools
+          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
           
-          cd $HOME
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip -d $HOME/android-sdk/
+          # Move to proper location
+          mkdir -p ~/.android/cmdline-tools
+          mv /tmp/cmdline-tools/cmdline-tools ~/.android/cmdline-tools/latest
           
-          # Handle zip structure
-          if [ -d "$HOME/android-sdk/cmdline-tools/cmdline-tools" ]; then
-            mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
-          else
-            mv "$HOME/android-sdk/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
-          fi
-          rm -f cmdline-tools.zip
+          # Accept all licenses automatically
+          yes | ~/.android/cmdline-tools/latest/bin/sdkmanager --licenses 2>&1 | head -20
           
-          if [ -d "$HOME/android-sdk/cmdline-tools/latest/bin" ]; then
-            echo "Installing Android SDK packages..."
-            yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1
-            $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-33"
-            $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;33.0.0"
-            # Use stable NDK version
-            $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
-            $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "cmake;3.22.1"
-          else
-            echo "ERROR: Could not find Android SDK tools"
-            ls -la $HOME/android-sdk/
-            exit 1
-          fi
+          # Install required SDK components
+          ~/.android/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" "ndk;25.2.9519653" 2>&1 | head -20
+          
+          echo "✅ SDK licenses accepted and components installed"
 
       - name: Build APK with Buildozer
         run: |
           cd ${{ github.workspace }}
-          export ANDROID_HOME=$HOME/android-sdk
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          export ANDROID_NDK_ROOT=$HOME/android-sdk/ndk/25.2.9519653
+          echo "=== Starting build ==="
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           
-          echo "Build starting..."
-          echo "Available memory:"
-          free -h
-          echo "Available disk:"
-          df -h /
+          # Set environment variables to use manually installed SDK
+          export ANDROID_HOME=$HOME/.android
+          export ANDROID_SDK_ROOT=$HOME/.android
+          export ANDROID_NDK_ROOT=$HOME/.android/ndk/25.2.9519653
           
+          # Run buildozer
           buildozer android debug 2>&1 | tee build.log
           
-          echo "Build completed. Looking for APK..."
-          find . -name "*.apk" -type f 2>/dev/null
+          echo "=== Searching for APK ==="
+          APK=$(find . -name "*.apk" -type f 2>/dev/null | grep -v ".buildozer/dists" | head -1)
+          if [ -z "$APK" ]; then
+            APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
+          fi
           
-          APK=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
           if [ -n "$APK" ]; then
             cp "$APK" output.apk
-            ls -lh output.apk
-            echo "✅ APK ready!"
+            echo "✅ APK found: $(ls -lh output.apk)"
           else
-            echo "⚠️ APK not found in expected locations"
-            find . -name "*.apk" 2>/dev/null
+            echo "❌ No APK found"
+            tail -30 build.log 2>/dev/null
             exit 1
           fi
 
@@ -112,3 +100,9 @@ jobs:
           name: youtube-streamer-apk
           path: output.apk
           retention-days: 30
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== FAILURE ==="
+          tail -50 build.log 2>/dev/null || echo "No log"
