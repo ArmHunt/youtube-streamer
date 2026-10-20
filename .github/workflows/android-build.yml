@@ -40,7 +40,11 @@ jobs:
       - name: Install Android build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant wget libtool-bin
+          sudo apt-get install -y python3-opencv openjdk-17-jdk-headless zip unzip ant wget libtool-bin libltdl-dev autoconf automake libtool
+          # Make libtool M4 macros available to aclocal (fixes autoreconf LT_SYS_SYMBOL_USCORE error)
+          sudo mkdir -p /usr/share/aclocal
+          sudo cp -f /usr/share/libtool/build-aux/*.m4 /usr/share/aclocal/ 2>/dev/null || true
+          sudo cp -f /usr/share/libtool/build-aux/*.ac /usr/share/aclocal/ 2>/dev/null || true
 
       - name: Download and setup Android SDK with licenses
         run: |
